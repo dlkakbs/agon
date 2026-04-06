@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 from web3 import Web3
 
 from bounty import BountyContract
-from analyzer import decode_target, analyze_wallet, report_to_result_hash, report_to_result_text, solve_with_llm
+from analyzer import solve_with_llm
 
 load_dotenv()
 
@@ -59,36 +59,18 @@ def _make_wallet(w3: Web3):
 
 def run_task(w3: Web3, task: dict) -> tuple[bytes, str] | None:
     """
-    İki mod:
-      1. taskHash = bytes32(uint160(walletAddress)) → on-chain wallet analizi
-      2. taskHash = başka bir şey               → LLM ile genel task çözümü
+    Task'ı LLM ile çöz (Claude via OpenRouter veya OpenAI fallback).
+    title + description agent'a gönderilir, yanıt on-chain submit edilir.
     """
-    # ── Mod 1: Wallet analizi ─────────────────────────────────────────────
-    target = decode_target(task["taskHash"])
-    if target:
-        log.info(f"  [WALLET] Hedef: {target}")
-        report = analyze_wallet(w3, target)
-        log.info(
-            f"  Analiz tamamlandı — risk={report['risk_score']} ({report['risk_label']}), "
-            f"balance={report['balance_usdc']} USDC"
-        )
-        os.makedirs("reports", exist_ok=True)
-        out_path = f"reports/task_{task['id']}_{target[:8]}.json"
-        with open(out_path, "w") as f:
-            json.dump(report, f, indent=2)
-        log.info(f"  Rapor: {out_path}")
-        return report_to_result_hash(report), report_to_result_text(report)
-
-    # ── Mod 2: LLM task ───────────────────────────────────────────────────
     title       = task.get("title", "")
     description = task.get("description", "")
-    log.info(f"  [LLM] '{title}' — LLM ile çözülüyor...")
+    log.info(f"  '{title}' — LLM ile çözülüyor...")
     result = solve_with_llm(title, description)
     if result is None:
         log.warning(f"  #{task['id']} LLM çözümü başarısız (API key eksik veya hata).")
         return None
     result_hash, result_text = result
-    log.info(f"  LLM yanıtı alındı ({len(result_text)} karakter)")
+    log.info(f"  Yanıt alındı ({len(result_text)} karakter)")
     return result_hash, result_text
 
 
