@@ -6,13 +6,16 @@ Flow:
   2. Uygun task bul → takeTask() ile kilitle (stake yatır)
   3. Görevi çalıştır (wallet analizi)
   4. submitResult() ile sonucu gönder
-  5. Evaluator (GPT-4o) onaylarsa reward + stake geri gelir
+  5. Evaluator gateway'e $0.001 USDC nanopayment yaparak değerlendirme tetikle
+  6. Gateway approve/reject tx'ini on-chain gönderir
 """
 
 import os
 import time
 import json
 import logging
+import subprocess
+import pathlib
 
 from dotenv import load_dotenv
 from web3 import Web3
@@ -78,6 +81,39 @@ def run_task(w3: Web3, task: dict) -> tuple[bytes, str] | None:
     log.info(f"  Rapor: {out_path}")
 
     return report_to_result_hash(report), report_to_result_text(report)
+
+
+# ── Nanopayment evaluation ────────────────────────────────────────────────────
+
+_PAY_EVALUATE_JS = pathlib.Path(__file__).parent / "pay_evaluate.js"
+
+def pay_and_evaluate(task_id: int, title: str, description: str, result_text: str) -> dict | None:
+    """
+    Node.js pay_evaluate.js'i subprocess ile çağırır.
+    Worker agent $0.001 USDC nanopayment yaparak evaluator gateway'den verdict alır.
+    Gateway ayrıca approve/reject tx'ini on-chain gönderir.
+    """
+    try:
+        proc = subprocess.run(
+            [
+                "node", str(_PAY_EVALUATE_JS),
+                f"--task-id={task_id}",
+                f"--title={title}",
+                f"--description={description}",
+                f"--result={result_text}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=str(_PAY_EVALUATE_JS.parent),
+        )
+        if proc.returncode != 0:
+            log.error(f"  pay_evaluate.js error: {proc.stderr.strip()}")
+            return None
+        return json.loads(proc.stdout.strip())
+    except Exception as e:
+        log.error(f"  pay_and_evaluate exception: {e}")
+        return None
 
 
 # ── On-chain actions ──────────────────────────────────────────────────────────
@@ -179,7 +215,16 @@ def _cycle(w3, wallet, contract: BountyContract, taken_ids: set, submitted_ids: 
         result_hash, result_text = result
         tx_hash = submit_result(wallet, contract, tid, result_hash, result_text)
         log.info(f"  Submit tx: {tx_hash}")
-        log.info(f"  #{tid} submit onaylandı — evaluator değerlendirmesini bekliyor.")
+        log.info(f"  #{tid} submit onaylandı — evaluator gateway'e nanopayment gönderiliyor...")
+
+        task_data = contract.get_task(tid)
+        verdict = pay_and_evaluate(tid, task_data.get("title", ""), task_data.get("description", ""), result_text)
+        if verdict:
+            log.info(f"  Verdict: {verdict.get('verdict')} (score={verdict.get('score')}) — {verdict.get('reason')}")
+            log.info(f"  On-chain tx: {verdict.get('txHash')}")
+        else:
+            log.warning(f"  #{tid} nanopayment değerlendirme başarısız, evaluator main.py devreye girebilir.")
+
         submitted_ids.add(tid)
 
     # ── 2. Yeni açık task ara ─────────────────────────────────────────────

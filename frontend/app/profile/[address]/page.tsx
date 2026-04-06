@@ -1,49 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { use, useEffect, useState } from "react";
-import { formatEther, parseAbiItem } from "viem";
-import { useAccount, usePublicClient, useReadContract, useReadContracts } from "wagmi";
-import { BOUNTY_REGISTRY_ABI, BOUNTY_REGISTRY_ADDRESS } from "@/lib/contract";
+import { use, useState } from "react";
+import { formatEther } from "viem";
+import { useAccount, useReadContract, useReadContracts } from "wagmi";
+import { BOUNTY_REGISTRY_ABI, BOUNTY_REGISTRY_ADDRESS, TaskStatusLabel, type TaskStatusType } from "@/lib/contract";
 import { toast } from "sonner";
 
 type AgentStatsResult = readonly [bigint, bigint, bigint];
-type BountyRecord = readonly [
-  creator: `0x${string}`,
-  title: string,
-  description: string,
-  taskHash: `0x${string}`,
-  reward: bigint,
-  deadline: bigint,
-  challengePeriod: bigint,
-  validationType: number,
-  validator: `0x${string}`,
-  status: number,
-  winner: `0x${string}`
-];
 
-type SubmissionRecord = {
+type TaskRecord = {
+  creator: `0x${string}`;
+  title: string;
+  description: string;
+  taskHash: `0x${string}`;
+  reward: bigint;
+  stakeRequired: bigint;
+  deadline: bigint;
+  evaluator: `0x${string}`;
+  status: number;
   agent: `0x${string}`;
+  agentStake: bigint;
+  takenAt: bigint;
   resultHash: `0x${string}`;
-  submittedAt: bigint;
-  challenged: boolean;
-  approved: boolean;
-  rejected: boolean;
-};
-
-type ResultSubmittedLogArgs = {
-  bountyId?: bigint;
-  agent?: string;
-  result?: string;
+  resultText: string;
 };
 
 export default function ProfilePage({ params }: { params: Promise<{ address: string }> }) {
   const { address: agentAddress } = use(params);
   const { address: connectedWallet } = useAccount();
-  const publicClient = usePublicClient();
-
   const [copied, setCopied] = useState(false);
-  const [resultTexts, setResultTexts] = useState<Record<string, string>>({});
 
   const handleCopyAddress = () => {
     navigator.clipboard.writeText(agentAddress);
@@ -52,32 +38,6 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
     setTimeout(() => setCopied(false), 2000);
   };
 
-  useEffect(() => {
-    if (!publicClient) return;
-
-    publicClient
-      .getLogs({
-        address: BOUNTY_REGISTRY_ADDRESS,
-        event: parseAbiItem(
-          "event ResultSubmitted(uint256 indexed bountyId, address indexed agent, bytes32 resultHash, string result)"
-        ),
-        fromBlock: BigInt(0),
-      })
-      .then((logs) => {
-        const map: Record<string, string> = {};
-
-        for (const log of logs) {
-          const args = log.args as ResultSubmittedLogArgs;
-          if (args.agent?.toLowerCase() !== agentAddress.toLowerCase()) continue;
-          if (!args.bountyId || !args.result) continue;
-          map[args.bountyId.toString()] = args.result;
-        }
-
-        setResultTexts(map);
-      })
-      .catch(() => {});
-  }, [agentAddress, publicClient]);
-
   const { data: statsRaw } = useReadContract({
     address: BOUNTY_REGISTRY_ADDRESS,
     abi: BOUNTY_REGISTRY_ABI,
@@ -85,28 +45,19 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
     args: [agentAddress as `0x${string}`],
   });
 
-  const { data: bountyCount } = useReadContract({
+  const { data: taskCount } = useReadContract({
     address: BOUNTY_REGISTRY_ADDRESS,
     abi: BOUNTY_REGISTRY_ABI,
-    functionName: "bountyCount",
+    functionName: "taskCount",
   });
 
-  const ids = Array.from({ length: Number(bountyCount ?? 0) }, (_, index) => BigInt(index + 1));
+  const ids = Array.from({ length: Number(taskCount ?? 0) }, (_, index) => BigInt(index + 1));
 
-  const { data: bountyRows } = useReadContracts({
+  const { data: taskRows } = useReadContracts({
     contracts: ids.map((id) => ({
       address: BOUNTY_REGISTRY_ADDRESS,
       abi: BOUNTY_REGISTRY_ABI,
-      functionName: "bounties" as const,
-      args: [id],
-    })),
-  });
-
-  const { data: submissionRows } = useReadContracts({
-    contracts: ids.map((id) => ({
-      address: BOUNTY_REGISTRY_ADDRESS,
-      abi: BOUNTY_REGISTRY_ABI,
-      functionName: "getSubmissions" as const,
+      functionName: "getTask" as const,
       args: [id],
     })),
   });
@@ -116,20 +67,14 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
   const attempted = stats?.[1] ?? BigInt(0);
   const totalEarned = stats?.[2] ?? BigInt(0);
 
-  const participatedBounties = ids
+  const participatedTasks = ids
     .map((id, index) => {
-      const bounty = (bountyRows?.[index]?.result as BountyRecord | undefined) ?? null;
-      const submissions = (submissionRows?.[index]?.result as SubmissionRecord[] | undefined) ?? [];
-      const submission = submissions.find(
-        (entry) => entry.agent.toLowerCase() === agentAddress.toLowerCase()
-      );
-
-      if (!bounty || !submission) return null;
-      return { id, bounty, submission };
+      const task = taskRows?.[index]?.result as TaskRecord | undefined;
+      if (!task) return null;
+      if (task.agent.toLowerCase() !== agentAddress.toLowerCase()) return null;
+      return { id, task };
     })
-    .filter(
-      (entry): entry is { id: bigint; bounty: BountyRecord; submission: SubmissionRecord } => entry !== null
-    );
+    .filter((entry): entry is { id: bigint; task: TaskRecord } => entry !== null);
 
   return (
     <main className="section">
@@ -222,37 +167,18 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
         ))}
       </div>
 
-      <p className="section-label">{"// Bounty Participation"}</p>
-      {participatedBounties.length === 0 ? (
-        <p style={{ color: "var(--muted)", fontSize: "0.75rem" }}>No submissions yet.</p>
+      <p className="section-label">{"// Task Participation"}</p>
+      {participatedTasks.length === 0 ? (
+        <p style={{ color: "var(--muted)", fontSize: "0.75rem" }}>No tasks taken yet.</p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 1, background: "var(--border)" }}>
-          {participatedBounties.map(({ id, bounty, submission }) => {
-            const reward = bounty[4];
-            const creator = bounty[0];
-            const title = bounty[1] || `Bounty #${id.toString()}`;
-            const winner = bounty[10];
-            const isWinner = winner.toLowerCase() === agentAddress.toLowerCase();
-            const isApproved = submission.approved;
-            const isRejected = submission.rejected;
-            const isChallenged = submission.challenged;
-            const isCreator = connectedWallet?.toLowerCase() === creator.toLowerCase();
-            const resultText = resultTexts[id.toString()];
-
-            const statusLabel = isWinner || isApproved
-              ? "WINNER"
-              : isRejected
-                ? "REJECTED"
-                : isChallenged
-                  ? "CHALLENGED"
-                  : "PENDING";
-            const badgeColor = isWinner || isApproved
-              ? "blue"
-              : isRejected
-                ? "red"
-                : isChallenged
-                  ? "amber"
-                  : "muted";
+          {participatedTasks.map(({ id, task }) => {
+            const isCreator = connectedWallet?.toLowerCase() === task.creator.toLowerCase();
+            const statusLabel = TaskStatusLabel[task.status as TaskStatusType] ?? "Unknown";
+            const badgeColor =
+              task.status === 2 ? "green" :
+              task.status === 3 ? "red" :
+              task.status === 1 ? "amber" : "muted";
 
             return (
               <div key={id.toString()} className="card">
@@ -262,24 +188,26 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
                     gridTemplateColumns: "1fr auto auto",
                     gap: "1rem",
                     alignItems: "center",
-                    marginBottom: isCreator && resultText ? "0.75rem" : 0,
+                    marginBottom: isCreator && task.resultText ? "0.75rem" : 0,
                   }}
                 >
                   <div>
                     <Link href={`/bounties/${id}`} style={{ color: "#fff", fontSize: "0.82rem", textDecoration: "none" }}>
-                      {title}
+                      {task.title || `Task #${id.toString()}`}
                     </Link>
-                    <p style={{ fontSize: "0.65rem", color: "var(--muted)", marginTop: "0.2rem", fontFamily: "var(--mono)" }}>
-                      {submission.resultHash.slice(0, 12)}...
-                    </p>
+                    {task.resultHash !== "0x0000000000000000000000000000000000000000000000000000000000000000" && (
+                      <p style={{ fontSize: "0.65rem", color: "var(--muted)", marginTop: "0.2rem", fontFamily: "var(--mono)" }}>
+                        {task.resultHash.slice(0, 12)}...
+                      </p>
+                    )}
                   </div>
                   <span style={{ fontSize: "0.75rem", color: "var(--amber)", fontFamily: "var(--mono)", fontWeight: 700 }}>
-                    ${Number(formatEther(reward)).toFixed(0)} USDC
+                    ${Number(formatEther(task.reward)).toFixed(0)} USDC
                   </span>
-                  <span className={`badge badge-${badgeColor}`}>{statusLabel}</span>
+                  <span className={`badge badge-${badgeColor}`}>{statusLabel.toUpperCase()}</span>
                 </div>
 
-                {isCreator && resultText && (
+                {isCreator && task.resultText && (
                   <div
                     style={{
                       borderTop: "1px solid var(--border)",
@@ -309,7 +237,7 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
                         fontFamily: "var(--mono)",
                       }}
                     >
-                      {resultText}
+                      {task.resultText}
                     </pre>
                   </div>
                 )}

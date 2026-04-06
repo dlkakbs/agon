@@ -1,0 +1,10 @@
+{
+  "name": "agon-agent-nanopay",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "@circle-fin/x402-batching": "latest",
+    "dotenv": "^16.0.0"
+  }
+}

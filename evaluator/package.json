@@ -1,0 +1,16 @@
+{
+  "name": "agon-evaluator-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node gateway.js"
+  },
+  "dependencies": {
+    "@circle-fin/x402-batching": "latest",
+    "express": "^4.19.2",
+    "openai": "^4.0.0",
+    "viem": "^2.47.6",
+    "dotenv": "^16.0.0"
+  }
+}
