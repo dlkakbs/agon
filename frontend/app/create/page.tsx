@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { BOUNTY_REGISTRY_ADDRESS, BOUNTY_REGISTRY_ABI } from "@/lib/contract";
-import { parseEther, isAddress } from "viem";
+import { parseEther } from "viem";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -17,8 +17,8 @@ export default function CreateBountyPage() {
   const [reward, setReward] = useState("");
   const [stakeRequired, setStakeRequired] = useState("");
   const [deadline, setDeadline] = useState("");
-  const [evaluatorAddress, setEvaluatorAddress] = useState("");
-  const [targetWallet, setTargetWallet] = useState("");
+
+  const EVALUATOR_ADDRESS = "0xaa6ef23e9e247a6dd8c5f777d7336dc9830b3ed5" as `0x${string}`;
 
   const { writeContract, data: txHash, isPending } = useWriteContract();
 
@@ -36,11 +36,16 @@ export default function CreateBountyPage() {
     return log?.topics?.[1] ? String(BigInt(log.topics[1])) : null;
   }, [isConfirmed, receipt, txHash]);
 
-  // taskHash = bytes32(uint160(targetWallet)) — agent son 20 byte'ı çözüp hedefi bulur
-  const taskHash =
-    targetWallet && isAddress(targetWallet)
-      ? (`0x000000000000000000000000${targetWallet.slice(2)}` as `0x${string}`)
-      : null;
+  // taskHash = keccak256-benzeri: title+description'ın ilk 32 byte hex özeti
+  const taskHash = useMemo((): `0x${string}` => {
+    const raw = `${title}||${taskDescription}`;
+    let hash = 0;
+    for (let i = 0; i < raw.length; i++) {
+      hash = (Math.imul(31, hash) + raw.charCodeAt(i)) | 0;
+    }
+    const hex = Math.abs(hash).toString(16).padStart(8, "0");
+    return `0x${hex.padEnd(64, "0")}`;
+  }, [title, taskDescription]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,16 +75,6 @@ export default function CreateBountyPage() {
       toast.error("Deadline must be in the future");
       return;
     }
-    if (!targetWallet || !isAddress(targetWallet)) {
-      toast.error("Valid target wallet address required");
-      return;
-    }
-    if (!evaluatorAddress || !isAddress(evaluatorAddress)) {
-      toast.error("Valid evaluator address required");
-      return;
-    }
-
-    const hash = `0x000000000000000000000000${targetWallet.slice(2)}` as `0x${string}`;
     const rewardWei = parseEther(reward);
     const stakeRequiredWei = parseEther(stakeRequired || "0");
 
@@ -91,10 +86,10 @@ export default function CreateBountyPage() {
         args: [
           title,
           taskDescription,
-          hash,
+          taskHash,
           stakeRequiredWei,
           BigInt(deadlineTs),
-          evaluatorAddress as `0x${string}`,
+          EVALUATOR_ADDRESS,
         ],
         value: rewardWei,
       },
@@ -198,7 +193,7 @@ export default function CreateBountyPage() {
             { label: "Tx Hash", val: `${txHash.slice(0, 10)}...${txHash.slice(-6)}` },
             { label: "Reward", val: `${reward} USDC` },
             { label: "Stake Required", val: `${stakeRequired || "0"} USDC` },
-            { label: "Evaluator", val: `${evaluatorAddress.slice(0, 10)}...${evaluatorAddress.slice(-6)}` },
+            { label: "Evaluator", val: `${EVALUATOR_ADDRESS.slice(0, 10)}...${EVALUATOR_ADDRESS.slice(-6)}` },
           ].map(({ label, val }) => (
             <div
               key={label}
@@ -219,7 +214,6 @@ export default function CreateBountyPage() {
               setReward("");
               setStakeRequired("");
               setDeadline("");
-              setEvaluatorAddress("");
               window.location.reload();
             }}
           >
@@ -258,8 +252,8 @@ export default function CreateBountyPage() {
           },
           {
             num: "04",
-            title: "Set Evaluator Address",
-            body: "This wallet approves results, rejects invalid work, and can slash timeouts when the task is locked.",
+            title: "AI Evaluation",
+            body: "An independent AI evaluator automatically reviews submitted results and approves or rejects them on-chain.",
           },
         ].map(({ num, title: stepTitle, body }) => (
           <div key={num} style={{ background: "var(--surface)", padding: "1.25rem 1.5rem", display: "flex", gap: "1.5rem" }}>
@@ -299,24 +293,6 @@ export default function CreateBountyPage() {
             style={{ resize: "vertical" }}
             required
           />
-        </div>
-
-        <div>
-          <label style={{ fontSize: "0.65rem", letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: "0.5rem" }}>
-            Target Wallet Address
-          </label>
-          <input
-            className="input-field"
-            placeholder="0x... (the wallet to be analyzed by the agent)"
-            value={targetWallet}
-            onChange={(e) => setTargetWallet(e.target.value)}
-            required
-          />
-          {taskHash && (
-            <p style={{ fontSize: "0.65rem", color: "var(--muted)", marginTop: "0.4rem", fontFamily: "var(--mono)" }}>
-              taskHash: {taskHash.slice(0, 20)}...
-            </p>
-          )}
         </div>
 
         <div>
@@ -363,31 +339,6 @@ export default function CreateBountyPage() {
             style={{ colorScheme: "dark" }}
             required
           />
-        </div>
-
-        <div>
-          <label style={{ fontSize: "0.65rem", letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: "0.5rem" }}>
-            Evaluator Address
-          </label>
-          <input
-            className="input-field"
-            placeholder="0x..."
-            value={evaluatorAddress}
-            onChange={(e) => setEvaluatorAddress(e.target.value)}
-            required
-          />
-          <p style={{ fontSize: "0.65rem", color: "var(--muted)", marginTop: "0.4rem" }}>
-            This wallet evaluates the submitted result and resolves timeouts.
-          </p>
-          {address && (
-            <button
-              type="button"
-              onClick={() => setEvaluatorAddress(address)}
-              style={{ fontSize: "0.65rem", color: "var(--amber)", marginTop: "0.4rem", background: "none", border: "none", cursor: "crosshair", fontFamily: "var(--mono)" }}
-            >
-              Use my address
-            </button>
-          )}
         </div>
 
         {txHash && isConfirming && (
