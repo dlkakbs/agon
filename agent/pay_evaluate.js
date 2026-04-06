@@ -37,14 +37,25 @@ if (!taskId || !resultText) {
 // ── GatewayClient ─────────────────────────────────────────────────────────────
 
 async function main() {
+  // Circle DCW mode has no raw private key — require a dedicated NANOPAY_PRIVATE_KEY.
+  const privateKey = process.env.NANOPAY_PRIVATE_KEY || process.env.PRIVATE_KEY;
+  if (!privateKey) {
+    process.stderr.write(
+      "ERROR: Set NANOPAY_PRIVATE_KEY (or PRIVATE_KEY) for nanopayments.\n" +
+      "Circle DCW mode does not expose a raw key; provision a separate EOA for x402 payments.\n"
+    );
+    process.exit(1);
+  }
+
   const client = new GatewayClient({
     chain: "arcTestnet",
-    privateKey: process.env.PRIVATE_KEY,
+    privateKey,
   });
 
-  // Deposit if Gateway balance is low (one-time on-chain tx)
+  // Deposit if Gateway balance is low (one-time on-chain tx).
+  // MIN_BALANCE = 5× evaluation price (0.005 USDC) to avoid thrashing deposits.
   const balances = await client.getBalances();
-  const MIN_BALANCE = 100_000n; // 0.0001 USDC in base units (18 dec)
+  const MIN_BALANCE = 5_000_000_000_000_000n; // 0.005 USDC in 18-decimal base units
 
   if (balances.gateway.available < MIN_BALANCE) {
     process.stderr.write(`[nanopay] Low gateway balance (${balances.gateway.formattedAvailable} USDC), depositing 1 USDC...\n`);
