@@ -10,25 +10,15 @@ import {
   useWriteContract,
 } from "wagmi";
 import { Countdown } from "@/components/Countdown";
-import { BOUNTY_REGISTRY_ABI, BOUNTY_REGISTRY_ADDRESS, TaskStatus } from "@/lib/contract";
+import {
+  BOUNTY_REGISTRY_ABI,
+  BOUNTY_REGISTRY_ADDRESS,
+  EVALUATORS,
+  TIEBREAKER,
+  TaskStatus,
+  type TaskRecord,
+} from "@/lib/contract";
 import { toast } from "sonner";
-
-type TaskRecord = {
-  creator: `0x${string}`;
-  title: string;
-  description: string;
-  taskHash: `0x${string}`;
-  reward: bigint;
-  stakeRequired: bigint;
-  deadline: bigint;
-  evaluator: `0x${string}`;
-  status: number;
-  agent: `0x${string}`;
-  agentStake: bigint;
-  takenAt: bigint;
-  resultHash: `0x${string}`;
-  resultText: string;
-};
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const ZERO_HASH = "0x0000000000000000000000000000000000000000000000000000000000000000";
@@ -101,53 +91,50 @@ export default function BountyDetailPage({ params }: { params: Promise<{ id: str
   const deadlineSeconds = Number(task.deadline);
   const takenAtSeconds = Number(task.takenAt);
   const isExpired = task.status !== TaskStatus.COMPLETED && task.status !== TaskStatus.CANCELLED && now > deadlineSeconds;
+
   const isCreator = userAddress?.toLowerCase() === task.creator.toLowerCase();
-  const isEvaluator = userAddress?.toLowerCase() === task.evaluator.toLowerCase();
+  const isMainEvaluator =
+    userAddress?.toLowerCase() === EVALUATORS[0].toLowerCase() ||
+    userAddress?.toLowerCase() === EVALUATORS[1].toLowerCase();
+  const isTiebreaker = userAddress?.toLowerCase() === TIEBREAKER.toLowerCase() && task.tiebreakerCalled;
+  const isEvaluator = isMainEvaluator || isTiebreaker;
+
   const isAssignedAgent = userAddress?.toLowerCase() === task.agent.toLowerCase();
   const hasAgent = task.agent.toLowerCase() !== ZERO_ADDRESS.toLowerCase();
   const hasSubmittedResult = task.resultHash !== ZERO_HASH || task.resultText.length > 0;
+
   const canTakeTask =
     Boolean(userAddress) && isRegisteredAgent && task.status === TaskStatus.OPEN && !hasAgent && !isExpired && !isCreator;
   const canSubmitResult =
     Boolean(userAddress) && isAssignedAgent && task.status === TaskStatus.LOCKED && !hasSubmittedResult;
-  const canApproveOrReject =
+  const canVote =
     Boolean(userAddress) && isEvaluator && task.status === TaskStatus.LOCKED && hasSubmittedResult;
   const canSlashTimeout =
-    Boolean(userAddress) && (isCreator || isEvaluator) && task.status === TaskStatus.LOCKED && now > deadlineSeconds;
+    Boolean(userAddress) && task.status === TaskStatus.LOCKED && now > deadlineSeconds && !hasSubmittedResult;
+  const canEvaluatorTimeout =
+    Boolean(userAddress) && task.status === TaskStatus.LOCKED && now > deadlineSeconds && hasSubmittedResult;
   const canCancelTask =
     Boolean(userAddress) && isCreator && task.status === TaskStatus.OPEN && !hasAgent;
+
   const statusInfo = statusConfig[task.status as keyof typeof statusConfig] ?? {
     label: `Unknown (${task.status})`,
     badge: "badge-muted",
   };
   const resultHashPreview = resultTextInput ? keccak256(toHex(resultTextInput)).slice(0, 20) : null;
 
-  const sendTx = (
-    config:
-      | {
-          functionName: "takeTask";
-          args: readonly [bigint];
-          value: bigint;
-        }
-      | {
-          functionName: "submitResult";
-          args: readonly [bigint, `0x${string}`, string];
-          value?: never;
-        }
-      | {
-          functionName: "approveResult" | "rejectResult" | "slashTimeout" | "cancelTask";
-          args: readonly [bigint];
-          value?: never;
-        },
+  const handleTx = (
+    functionName: "takeTask" | "submitResult" | "vote" | "slashTimeout" | "evaluatorTimeout" | "cancelTask",
+    args: readonly unknown[],
+    value: bigint | undefined,
     successMessage: string
   ) => {
     writeContract(
       {
         address: BOUNTY_REGISTRY_ADDRESS,
         abi: BOUNTY_REGISTRY_ABI,
-        functionName: config.functionName,
-        args: config.args,
-        value: config.value,
+        functionName: functionName as "takeTask",
+        args: args as readonly [bigint],
+        value,
       },
       {
         onSuccess: () => toast.success(successMessage),
@@ -161,14 +148,7 @@ export default function BountyDetailPage({ params }: { params: Promise<{ id: str
       toast.error("Please enter a result description");
       return;
     }
-
-    sendTx(
-      {
-        functionName: "submitResult",
-        args: [taskId, keccak256(toHex(resultTextInput)), resultTextInput],
-      },
-      "Result submitted! Waiting for confirmation..."
-    );
+    handleTx("submitResult", [taskId, keccak256(toHex(resultTextInput)), resultTextInput], undefined, "Result submitted!");
     setShowSubmitForm(false);
     setResultTextInput("");
   };
@@ -264,11 +244,28 @@ export default function BountyDetailPage({ params }: { params: Promise<{ id: str
 
         <div className="card">
           <p style={{ fontSize: "0.6rem", letterSpacing: "0.15em", color: "var(--muted)", marginBottom: "0.5rem" }}>
-            EVALUATOR
+            EVALUATORS
           </p>
-          <Link href={`/profile/${task.evaluator}`} style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--amber)", textDecoration: "none" }}>
-            {task.evaluator.slice(0, 6)}...{task.evaluator.slice(-4)}
-          </Link>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+            {task.evaluators.map((addr, i) => (
+              <span key={addr} style={{ fontFamily: "var(--mono)", fontSize: "0.72rem", color: "var(--amber)" }}>
+                {i + 1}. {addr.slice(0, 6)}...{addr.slice(-4)}
+              </span>
+            ))}
+            <span style={{ fontFamily: "var(--mono)", fontSize: "0.72rem", color: "var(--muted)" }}>
+              TB: {task.tiebreaker.slice(0, 6)}...{task.tiebreaker.slice(-4)}
+            </span>
+          </div>
+        </div>
+
+        <div className="card">
+          <p style={{ fontSize: "0.6rem", letterSpacing: "0.15em", color: "var(--muted)", marginBottom: "0.5rem" }}>
+            VOTES
+          </p>
+          <p style={{ fontFamily: "var(--mono)", fontSize: "0.85rem", fontWeight: 700, color: "#fff" }}>
+            ✓ {task.approveCount} &nbsp; ✗ {task.rejectCount}
+            {task.tiebreakerCalled && <span style={{ color: "var(--amber)", fontSize: "0.7rem" }}> (tiebreaker active)</span>}
+          </p>
         </div>
 
         <div className="card">
@@ -276,7 +273,7 @@ export default function BountyDetailPage({ params }: { params: Promise<{ id: str
             STATUS
           </p>
           <p style={{ fontFamily: "var(--mono)", fontSize: "0.85rem", fontWeight: 700, color: "#fff" }}>
-            {statusInfo.label} ({task.status})
+            {statusInfo.label}
           </p>
         </div>
 
@@ -316,16 +313,7 @@ export default function BountyDetailPage({ params }: { params: Promise<{ id: str
         <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
           {canTakeTask && (
             <button
-              onClick={() =>
-                sendTx(
-                  {
-                    functionName: "takeTask",
-                    args: [taskId],
-                    value: task.stakeRequired,
-                  },
-                  "Task take submitted! Waiting for confirmation..."
-                )
-              }
+              onClick={() => handleTx("takeTask", [taskId], task.stakeRequired, "Task taken!")}
               disabled={isBusy}
               className="btn-primary"
             >
@@ -334,57 +322,33 @@ export default function BountyDetailPage({ params }: { params: Promise<{ id: str
           )}
 
           {canSubmitResult && (
-            <button onClick={() => setShowSubmitForm((current) => !current)} disabled={isBusy} className="btn-primary">
+            <button onClick={() => setShowSubmitForm((v) => !v)} disabled={isBusy} className="btn-primary">
               Submit Result
             </button>
           )}
 
-          {canApproveOrReject && (
+          {canVote && (
             <>
               <button
-                onClick={() =>
-                  sendTx(
-                    {
-                      functionName: "approveResult",
-                      args: [taskId],
-                    },
-                    "Approved! Waiting for confirmation..."
-                  )
-                }
+                onClick={() => handleTx("vote", [taskId, true], undefined, "Approved!")}
                 disabled={isBusy}
                 className="btn-primary"
               >
-                {isBusy ? "Processing..." : "Approve Result"}
+                {isBusy ? "Processing..." : "Approve"}
               </button>
               <button
-                onClick={() =>
-                  sendTx(
-                    {
-                      functionName: "rejectResult",
-                      args: [taskId],
-                    },
-                    "Rejected! Waiting for confirmation..."
-                  )
-                }
+                onClick={() => handleTx("vote", [taskId, false], undefined, "Rejected!")}
                 disabled={isBusy}
                 className="btn-ghost"
               >
-                {isBusy ? "Processing..." : "Reject Result"}
+                {isBusy ? "Processing..." : "Reject"}
               </button>
             </>
           )}
 
           {canSlashTimeout && (
             <button
-              onClick={() =>
-                sendTx(
-                  {
-                    functionName: "slashTimeout",
-                    args: [taskId],
-                  },
-                  "Slash submitted! Waiting for confirmation..."
-                )
-              }
+              onClick={() => handleTx("slashTimeout", [taskId], undefined, "Slashed!")}
               disabled={isBusy}
               className="btn-ghost"
             >
@@ -392,17 +356,19 @@ export default function BountyDetailPage({ params }: { params: Promise<{ id: str
             </button>
           )}
 
+          {canEvaluatorTimeout && (
+            <button
+              onClick={() => handleTx("evaluatorTimeout", [taskId], undefined, "Evaluator timeout triggered!")}
+              disabled={isBusy}
+              className="btn-ghost"
+            >
+              {isBusy ? "Processing..." : "Evaluator Timeout"}
+            </button>
+          )}
+
           {canCancelTask && (
             <button
-              onClick={() =>
-                sendTx(
-                  {
-                    functionName: "cancelTask",
-                    args: [taskId],
-                  },
-                  "Cancellation submitted! Waiting for confirmation..."
-                )
-              }
+              onClick={() => handleTx("cancelTask", [taskId], undefined, "Cancelled!")}
               disabled={isBusy}
               className="btn-ghost"
             >
@@ -414,18 +380,13 @@ export default function BountyDetailPage({ params }: { params: Promise<{ id: str
 
       {showSubmitForm && (
         <div className="card" style={{ marginBottom: "1.5rem" }}>
-          <p className="section-label" style={{ marginBottom: "1rem" }}>
-            {"// Submit Result"}
-          </p>
-          <p style={{ color: "var(--muted)", fontSize: "0.72rem", marginBottom: "0.75rem" }}>
-            Submit your result. It will be hashed before submission.
-          </p>
+          <p className="section-label" style={{ marginBottom: "1rem" }}>{"// Submit Result"}</p>
           <textarea
             className="input-field"
             rows={4}
             value={resultTextInput}
-            onChange={(event) => setResultTextInput(event.target.value)}
-            placeholder="Describe your result or paste the output URL..."
+            onChange={(e) => setResultTextInput(e.target.value)}
+            placeholder="Describe your result..."
             style={{ resize: "vertical", marginBottom: "0.75rem" }}
           />
           {resultHashPreview && (
@@ -437,9 +398,7 @@ export default function BountyDetailPage({ params }: { params: Promise<{ id: str
             <button onClick={handleSubmitResult} disabled={isBusy || !resultTextInput.trim()} className="btn-primary">
               {isBusy ? "Submitting..." : "Submit"}
             </button>
-            <button onClick={() => setShowSubmitForm(false)} className="btn-ghost">
-              Cancel
-            </button>
+            <button onClick={() => setShowSubmitForm(false)} className="btn-ghost">Cancel</button>
           </div>
         </div>
       )}

@@ -14,13 +14,17 @@ type TaskRecord = {
   reward: bigint;
   stakeRequired: bigint;
   deadline: bigint;
-  evaluator: `0x${string}`;
+  evaluators: readonly [`0x${string}`, `0x${string}`];
+  tiebreaker: `0x${string}`;
   status: number;
   agent: `0x${string}`;
   agentStake: bigint;
   takenAt: bigint;
   resultHash: `0x${string}`;
   resultText: string;
+  approveCount: number;
+  rejectCount: number;
+  tiebreakerCalled: boolean;
 };
 
 type DashboardFilter = "all" | "active" | "expired" | "completed" | "cancelled";
@@ -266,7 +270,7 @@ export default function Dashboard() {
 
                 <div style={{ display: "grid", gap: "0.45rem", fontSize: "0.68rem", color: "var(--muted)" }}>
                   <div>Creator: {task.creator.slice(0, 6)}...{task.creator.slice(-4)}</div>
-                  <div>Evaluator: {task.evaluator.slice(0, 6)}...{task.evaluator.slice(-4)}</div>
+                  <div>Evaluators: {task.evaluators[0].slice(0, 6)}...{task.evaluators[0].slice(-4)}</div>
                   <div>Reward: {Number(formatEther(task.reward)).toFixed(2)} USDC</div>
                   <div>Stake Required: {Number(formatEther(task.stakeRequired)).toFixed(2)} USDC</div>
                   <div>Submission: {hasSubmission ? "Submitted" : "Pending"}</div>

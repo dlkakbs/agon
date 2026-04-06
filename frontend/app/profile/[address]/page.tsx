@@ -17,13 +17,17 @@ type TaskRecord = {
   reward: bigint;
   stakeRequired: bigint;
   deadline: bigint;
-  evaluator: `0x${string}`;
+  evaluators: readonly [`0x${string}`, `0x${string}`];
+  tiebreaker: `0x${string}`;
   status: number;
   agent: `0x${string}`;
   agentStake: bigint;
   takenAt: bigint;
   resultHash: `0x${string}`;
   resultText: string;
+  approveCount: number;
+  rejectCount: number;
+  tiebreakerCalled: boolean;
 };
 
 export default function ProfilePage({ params }: { params: Promise<{ address: string }> }) {

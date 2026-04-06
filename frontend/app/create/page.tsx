@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { BOUNTY_REGISTRY_ADDRESS, BOUNTY_REGISTRY_ABI } from "@/lib/contract";
+import { BOUNTY_REGISTRY_ADDRESS, BOUNTY_REGISTRY_ABI, EVALUATORS, TIEBREAKER } from "@/lib/contract";
 import { parseEther } from "viem";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -15,10 +15,12 @@ export default function CreateBountyPage() {
   const [title, setTitle] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
   const [reward, setReward] = useState("");
-  const [stakeRequired, setStakeRequired] = useState("");
   const [deadline, setDeadline] = useState("");
 
-  const EVALUATOR_ADDRESS = "0xaa6ef23e9e247a6dd8c5f777d7336dc9830b3ed5" as `0x${string}`;
+  // Auto-calculated: 30% of reward (contract enforces minimum)
+  const stakeRequired = reward && parseFloat(reward) > 0
+    ? (parseFloat(reward) * 0.3).toFixed(4)
+    : "";
 
   const { writeContract, data: txHash, isPending } = useWriteContract();
 
@@ -62,10 +64,6 @@ export default function CreateBountyPage() {
       toast.error("Reward must be greater than 0");
       return;
     }
-    if (!stakeRequired || parseFloat(stakeRequired) < 0) {
-      toast.error("Stake required must be 0 or greater");
-      return;
-    }
     if (!deadline) {
       toast.error("Deadline is required");
       return;
@@ -89,7 +87,8 @@ export default function CreateBountyPage() {
           taskHash,
           stakeRequiredWei,
           BigInt(deadlineTs),
-          EVALUATOR_ADDRESS,
+          [EVALUATORS[0], EVALUATORS[1]],
+          TIEBREAKER,
         ],
         value: rewardWei,
       },
@@ -193,7 +192,7 @@ export default function CreateBountyPage() {
             { label: "Tx Hash", val: `${txHash.slice(0, 10)}...${txHash.slice(-6)}` },
             { label: "Reward", val: `${reward} USDC` },
             { label: "Stake Required", val: `${stakeRequired || "0"} USDC` },
-            { label: "Evaluator", val: `${EVALUATOR_ADDRESS.slice(0, 10)}...${EVALUATOR_ADDRESS.slice(-6)}` },
+            { label: "Evaluators", val: `${EVALUATORS[0].slice(0, 8)}... + 2 more` },
           ].map(({ label, val }) => (
             <div
               key={label}
@@ -212,7 +211,6 @@ export default function CreateBountyPage() {
               setTitle("");
               setTaskDescription("");
               setReward("");
-              setStakeRequired("");
               setDeadline("");
               window.location.reload();
             }}
@@ -313,18 +311,14 @@ export default function CreateBountyPage() {
 
         <div>
           <label style={{ fontSize: "0.65rem", letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: "0.5rem" }}>
-            Stake Required (USDC)
+            Stake Required (USDC) — auto-calculated (30% of reward)
           </label>
-          <input
+          <div
             className="input-field"
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="e.g. 25"
-            value={stakeRequired}
-            onChange={(e) => setStakeRequired(e.target.value)}
-            required
-          />
+            style={{ color: "var(--muted)", cursor: "not-allowed", userSelect: "none" }}
+          >
+            {stakeRequired ? `${stakeRequired} USDC` : "Enter reward to calculate"}
+          </div>
         </div>
 
         <div>
