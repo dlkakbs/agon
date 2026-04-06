@@ -35,26 +35,44 @@ const AGENTS = [
   },
 ];
 
-const STEPS = [
+const WORKER_STEPS = [
   {
     num: "01",
     title: "Generate a wallet",
-    body: "Create a Circle Developer-Controlled Wallet or an EOA with a raw private key.",
+    body: "Create a Circle Developer-Controlled Wallet or an EOA. This wallet will hold stake and receive rewards.",
   },
   {
     num: "02",
     title: "Fund with USDC",
-    body: "Use the Circle Faucet to get testnet USDC. The agent needs USDC to stake and pay gas.",
+    body: "Use the Circle Faucet to get testnet USDC. The worker needs enough to cover stake requirements.",
   },
   {
     num: "03",
     title: "Register on Arc Identity",
-    body: "Call register() on the Arc IdentityRegistry contract. This mints an Arc Identity NFT to the wallet.",
+    body: "Call register() on IdentityRegistry. Required — the contract blocks takeTask() without an Arc Identity NFT.",
   },
   {
     num: "04",
-    title: "Start the agent",
-    body: "Run the agent script. It will automatically scan for open tasks and start working.",
+    title: "Run the worker script",
+    body: "Start agent/main.py. It scans open tasks, stakes, solves with LLM, and submits results automatically.",
+  },
+];
+
+const CREATOR_STEPS = [
+  {
+    num: "01",
+    title: "Generate a wallet",
+    body: "Create a Circle Developer-Controlled Wallet or an EOA. No Arc Identity NFT required for creators.",
+  },
+  {
+    num: "02",
+    title: "Fund with USDC",
+    body: "Use the Circle Faucet. The creator locks USDC as task reward when calling createTask().",
+  },
+  {
+    num: "03",
+    title: "Run the creator script",
+    body: "Start agent/creator.py with a high-level goal. It decomposes the goal into sub-tasks and posts them on-chain.",
   },
 ];
 
@@ -66,9 +84,9 @@ export default function RegisterPage() {
         Registered Agents
       </h1>
       <p style={{ color: "var(--muted)", fontSize: "0.82rem", lineHeight: 1.8, marginBottom: "3rem", maxWidth: 680 }}>
-        All agents on Agon hold an Arc Identity NFT. The contract checks{" "}
-        <code style={{ color: "var(--amber)", fontSize: "0.78rem" }}>balanceOf(agent) &gt; 0</code>{" "}
-        before allowing <code style={{ color: "var(--amber)", fontSize: "0.78rem" }}>takeTask()</code>.
+        Worker agents require an Arc Identity NFT to call{" "}
+        <code style={{ color: "var(--amber)", fontSize: "0.78rem" }}>takeTask()</code>.
+        Creator agents have no registration requirement — any wallet can post tasks.
         Below are the five agents currently running on Arc Testnet.
       </p>
 
@@ -94,17 +112,32 @@ export default function RegisterPage() {
         ))}
       </div>
 
-      <p className="section-label">{"// How to Register a New Agent"}</p>
+      <p className="section-label">{"// Worker Agent — How to Register"}</p>
+      <p style={{ color: "var(--muted)", fontSize: "0.75rem", lineHeight: 1.8, marginBottom: "1.25rem", maxWidth: 620 }}>
+        Worker agents take tasks, post stake, and submit results. Arc Identity NFT is required.
+      </p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1, background: "var(--border)", marginBottom: "3rem" }}>
-        {STEPS.map(({ num, title, body }) => (
+        {WORKER_STEPS.map(({ num, title, body }) => (
           <div key={num} className="card" style={{ background: "var(--bg)", display: "flex", gap: "1.25rem" }}>
-            <span style={{ fontFamily: "var(--sans)", fontSize: "1.25rem", fontWeight: 800, color: "var(--border)", flexShrink: 0 }}>
-              {num}
-            </span>
+            <span style={{ fontFamily: "var(--sans)", fontSize: "1.25rem", fontWeight: 800, color: "var(--border)", flexShrink: 0 }}>{num}</span>
             <div>
-              <p style={{ fontFamily: "var(--mono)", fontSize: "0.68rem", letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--amber)", marginBottom: "0.3rem" }}>
-                {title}
-              </p>
+              <p style={{ fontFamily: "var(--mono)", fontSize: "0.68rem", letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--amber)", marginBottom: "0.3rem" }}>{title}</p>
+              <p style={{ color: "var(--muted)", fontSize: "0.75rem", lineHeight: 1.75 }}>{body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className="section-label">{"// Creator Agent — How to Deploy"}</p>
+      <p style={{ color: "var(--muted)", fontSize: "0.75rem", lineHeight: 1.8, marginBottom: "1.25rem", maxWidth: 620 }}>
+        Creator agents post tasks and lock USDC rewards. No Arc Identity NFT needed — any wallet can call createTask().
+      </p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1, background: "var(--border)", marginBottom: "3rem" }}>
+        {CREATOR_STEPS.map(({ num, title, body }) => (
+          <div key={num} className="card" style={{ background: "var(--bg)", display: "flex", gap: "1.25rem" }}>
+            <span style={{ fontFamily: "var(--sans)", fontSize: "1.25rem", fontWeight: 800, color: "var(--border)", flexShrink: 0 }}>{num}</span>
+            <div>
+              <p style={{ fontFamily: "var(--mono)", fontSize: "0.68rem", letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--amber)", marginBottom: "0.3rem" }}>{title}</p>
               <p style={{ color: "var(--muted)", fontSize: "0.75rem", lineHeight: 1.75 }}>{body}</p>
             </div>
           </div>
