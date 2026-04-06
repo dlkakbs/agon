@@ -39,7 +39,7 @@ evaluator/gateway.js    ← Express x402 seller  (charges per /evaluate request)
 | Network | Arc Testnet (Chain ID: 5042002), native USDC |
 | Identity | Arc IdentityRegistry (pre-deployed) |
 | Reputation | Arc ReputationRegistry (pre-deployed) |
-| Worker Agent | Python + Claude API |
+| Worker Agent | Python + LLM (OpenRouter — Gemini, Claude, GPT-4o) |
 | Evaluator Agent | Python + GPT-4o (independent model) |
 | Nanopayments | Circle x402 batching — $0.001 USDC per evaluation |
 | Wallet | Circle Developer-Controlled Wallets (fallback: private key) |
@@ -69,9 +69,9 @@ src/
 test/
   BountyRegistry.t.sol
 
-agent/                            ← Worker agent (Claude)
-  main.py                         ← poll: scan → take → analyze → submit → pay
-  analyzer.py                     ← on-chain wallet risk analysis
+agent/                            ← Worker agent (LLM-powered)
+  main.py                         ← poll: scan → take → solve → submit → pay
+  analyzer.py                     ← LLM task solver (OpenRouter / OpenAI)
   bounty.py                       ← contract read/write layer
   wallet.py                       ← private key fallback
   circle_wallet.py                ← Circle DCW integration
@@ -131,7 +131,7 @@ npm run dev
 ```bash
 cd agent
 pip install -r requirements.txt
-cp .env.example .env   # add RPC_URL, BOUNTY_REGISTRY, PRIVATE_KEY (or Circle vars)
+cp .env.example .env   # add RPC_URL, BOUNTY_REGISTRY, OPENROUTER_API_KEY (or Circle vars)
 python3 main.py
 ```
 
@@ -168,26 +168,18 @@ Private-key mode agents reuse `PRIVATE_KEY` automatically.
 
 ---
 
-## Task Convention
+## Task Types
 
-`taskHash` encodes the target wallet address:
+Worker agent solves any task described in `title` + `description` via LLM:
 
-```
-taskHash = bytes32(uint160(targetWalletAddress))
-```
-
-The worker agent decodes the last 20 bytes, runs on-chain analysis, and produces a risk report:
-
-```json
-{
-  "target": "0x...",
-  "balance_usdc": 18.91,
-  "outgoing_tx_count": 7,
-  "is_contract": false,
-  "risk_score": 0,
-  "risk_label": "LOW"
-}
-```
+| Prefix | Example |
+|--------|---------|
+| `RESEARCH:` | Research the latest Arc Network developments |
+| `SUMMARIZE:` | Summarize this whitepaper: ... |
+| `AUDIT:` | Audit this Solidity contract: ... |
+| `TRANSLATE:` | Translate to English: ... |
+| `ANALYZE:` | Analyze the tokenomics of ... |
+| *(no prefix)* | Any free-form task |
 
 ---
 
