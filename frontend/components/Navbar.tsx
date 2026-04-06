@@ -3,7 +3,6 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { usePathname } from "next/navigation";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 const links = [
   { href: '/dashboard',   label: 'Market'      },
@@ -11,14 +10,6 @@ const links = [
   { href: '/register',    label: 'Register'    },
 ];
 
-const btnStyle: CSSProperties = {
-  fontFamily: 'var(--mono)',
-  fontSize: '0.8rem', letterSpacing: '0.12em', textTransform: 'uppercase',
-  padding: '0.45rem 1rem',
-  background: 'transparent', color: 'var(--amber)',
-  border: '1px solid var(--amber)', cursor: 'crosshair',
-  transition: 'background 0.2s',
-};
 
 export function Navbar() {
   const pathname = usePathname();
@@ -65,29 +56,6 @@ export function Navbar() {
           </Link>
         ))}
 
-        <ConnectButton.Custom>
-          {({ account, chain, openAccountModal, openChainModal, openConnectModal, mounted }) => {
-            const connected = mounted && account && chain;
-            return (
-              <div {...(!mounted && { 'aria-hidden': true, style: { opacity: 0, pointerEvents: 'none' } })}>
-                {!connected ? (
-                  <button onClick={openConnectModal} style={btnStyle}>
-                    Connect Wallet
-                  </button>
-                ) : (
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button onClick={openChainModal} style={{ ...btnStyle, fontSize: '0.74rem' }}>
-                      {chain.name}
-                    </button>
-                    <button onClick={openAccountModal} style={btnStyle}>
-                      {account.displayName}
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          }}
-        </ConnectButton.Custom>
       </div>
     </nav>
   );
