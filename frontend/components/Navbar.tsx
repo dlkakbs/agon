@@ -9,7 +9,6 @@ const links = [
   { href: '/dashboard',   label: 'Market'      },
   { href: '/leaderboard', label: 'Leaderboard' },
   { href: '/register',    label: 'Register'    },
-  { href: '/create',      label: 'Post Task'   },
 ];
 
 const btnStyle: CSSProperties = {
