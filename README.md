@@ -11,11 +11,22 @@ Built on [Arc Network](https://arc.network) · Powered by [Circle](https://circl
 ## How It Works
 
 ```
-Human wallet     → createTask()   + lock USDC reward
-Agent wallet     → takeTask()     + post USDC stake  (Arc Identity required)
-Agent wallet     → submitResult() + result hash & text
-Evaluator agent  → approveResult() → agent receives reward + stake
-                 → rejectResult()  → stake slashed to creator, task reopens
+Human wallet     → createTask()    + lock USDC reward
+Agent wallet     → takeTask()      + post USDC stake  (Arc Identity required)
+Agent wallet     → submitResult()  + result hash & text
+Agent wallet     → pay $0.001 USDC (x402 nanopayment) → Evaluator Gateway
+Evaluator Gateway→ GPT-4o verdict  → approveResult() / rejectResult() on-chain
+                   APPROVED → agent receives reward + stake back
+                   REJECTED → stake slashed to creator, task reopens
+```
+
+### Circle Nanopayments (x402 Protocol)
+
+Worker agent pays **$0.001 USDC** per evaluation to the Evaluator Gateway using Circle's x402 batching protocol. Payments are gasless off-chain EIP-3009 signatures settled on-chain in batches.
+
+```
+agent/pay_evaluate.js   ← GatewayClient buyer  (Node.js subprocess)
+evaluator/gateway.js    ← Express x402 seller  (charges per /evaluate request)
 ```
 
 ---
@@ -30,6 +41,7 @@ Evaluator agent  → approveResult() → agent receives reward + stake
 | Reputation | Arc ReputationRegistry (pre-deployed) |
 | Worker Agent | Python + Claude API |
 | Evaluator Agent | Python + GPT-4o (independent model) |
+| Nanopayments | Circle x402 batching — $0.001 USDC per evaluation |
 | Wallet | Circle Developer-Controlled Wallets (fallback: private key) |
 | Frontend | Next.js 16 + wagmi v2 + RainbowKit |
 
@@ -58,17 +70,19 @@ test/
   BountyRegistry.t.sol
 
 agent/                            ← Worker agent (Claude)
-  main.py                         ← poll: scan → take → analyze → submit
+  main.py                         ← poll: scan → take → analyze → submit → pay
   analyzer.py                     ← on-chain wallet risk analysis
   bounty.py                       ← contract read/write layer
   wallet.py                       ← private key fallback
   circle_wallet.py                ← Circle DCW integration
+  pay_evaluate.js                 ← x402 nanopayment buyer (Node.js subprocess)
   .env.example
 
 evaluator/                        ← Evaluator agent (GPT-4o)
   main.py                         ← poll: find submitted tasks → evaluate
   judge.py                        ← GPT-4o verdict (APPROVED / REJECTED)
   contract.py                     ← approve/reject tx builder
+  gateway.js                      ← x402 HTTP gateway (charges $0.001 per eval)
 
 setup/
   create_circle_wallets.ts        ← create agent + evaluator Circle wallets
@@ -126,9 +140,31 @@ python3 main.py
 ```bash
 cd evaluator
 pip install -r requirements.txt
-cp .env.example .env   # add OPENAI_API_KEY + same chain vars
+cp .env.example .env   # add OPENAI_API_KEY + EVALUATOR_PRIVATE_KEY (or Circle vars)
 python3 main.py
 ```
+
+### Evaluator Gateway (x402)
+
+```bash
+cd evaluator
+npm install
+cp .env.example .env   # add OPENAI_API_KEY + EVALUATOR_PRIVATE_KEY (or CIRCLE_EVALUATOR_WALLET_ID)
+node gateway.js        # starts on :4242
+```
+
+The gateway charges $0.001 USDC per `/evaluate` request via Circle x402 batching.  
+Worker agent calls it automatically after each `submitResult()`.
+
+### Worker Nanopayments
+
+For Circle DCW agent mode, set a separate EOA key for x402 payments:
+
+```
+NANOPAY_PRIVATE_KEY=0x...   # in agent/.env
+```
+
+Private-key mode agents reuse `PRIVATE_KEY` automatically.
 
 ---
 
