@@ -63,7 +63,7 @@ async function main() {
     process.stderr.write("[nanopay] Deposit complete.\n");
   }
 
-  process.stderr.write(`[nanopay] Paying $0.001 USDC to evaluate task #${taskId}...\n`);
+  process.stderr.write(`[nanopay] Paying $0.002 USDC to evaluate task #${taskId}...\n`);
 
   const { data, status } = await client.pay(`${gatewayUrl}/evaluate`, {
     method: "POST",

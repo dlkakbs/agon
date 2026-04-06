@@ -192,10 +192,9 @@ def _cycle(w3, wallet, contract: BountyContract, taken_ids: set, submitted_ids: 
         if not result_text:
             continue
         log.info(f"  #{tid} gateway retry — nanopayment gönderiliyor...")
-        verdict = pay_and_evaluate(tid, task_data.get("title", ""), task_data.get("description", ""), result_text)
-        if verdict:
-            log.info(f"  Verdict: {verdict.get('verdict')} (score={verdict.get('score')}) — {verdict.get('reason')}")
-            log.info(f"  On-chain tx: {verdict.get('txHash')}")
+        result = pay_and_evaluate(tid, task_data.get("title", ""), task_data.get("description", ""), result_text)
+        if result and result.get("status") == "evaluation started":
+            log.info(f"  #{tid} evaluation started — 2 evaluators voting concurrently...")
             gateway_pending.discard(tid)
         else:
             log.warning(f"  #{tid} gateway retry başarısız, bir sonraki döngüde tekrar denenecek.")
@@ -225,10 +224,9 @@ def _cycle(w3, wallet, contract: BountyContract, taken_ids: set, submitted_ids: 
         log.info(f"  #{tid} submit onaylandı — evaluator gateway'e nanopayment gönderiliyor...")
 
         task_data = contract.get_task(tid)
-        verdict = pay_and_evaluate(tid, task_data.get("title", ""), task_data.get("description", ""), result_text)
-        if verdict:
-            log.info(f"  Verdict: {verdict.get('verdict')} (score={verdict.get('score')}) — {verdict.get('reason')}")
-            log.info(f"  On-chain tx: {verdict.get('txHash')}")
+        result = pay_and_evaluate(tid, task_data.get("title", ""), task_data.get("description", ""), result_text)
+        if result and result.get("status") == "evaluation started":
+            log.info(f"  #{tid} evaluation started — GPT-4o + Claude voting, Gemini on standby...")
         else:
             log.warning(f"  #{tid} nanopayment değerlendirme başarısız — sonraki döngüde retry edilecek.")
             gateway_pending.add(tid)
