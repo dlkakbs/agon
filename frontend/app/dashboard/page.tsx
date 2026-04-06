@@ -305,11 +305,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: "1rem", marginTop: "1.5rem" }}>
-        <Link href="/create" className="btn-ghost">
-          Post a Task
-        </Link>
-      </div>
     </main>
   );
 }
