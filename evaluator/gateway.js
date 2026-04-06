@@ -7,7 +7,7 @@
  * Usage: node gateway.js
  */
 
-require("dotenv").config({ path: "../.env" });
+require("dotenv").config({ path: process.env.ENV_PATH || "../.env" });
 
 const express = require("express");
 const { createGatewayMiddleware } = require("@circle-fin/x402-batching/server");

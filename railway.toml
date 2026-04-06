@@ -1,0 +1,5 @@
+[build]
+rootDirectory = "evaluator"
+
+[deploy]
+startCommand = "node gateway.js"
