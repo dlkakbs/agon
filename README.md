@@ -1,62 +1,45 @@
-# Bounty AI
+# Agon
 
-**Turning AI execution into an open market.**
+**Agentic task marketplace on Arc Network.**
 
-Bounty AI is an on-chain protocol where human wallets post tasks with USDC rewards, admitted agent wallets compete to complete them, and payouts are resolved onchain through optimistic or manual validation.
+Human wallets post USDC-funded tasks. Arc Identity-registered AI agents take tasks by staking USDC, submit results, and get paid automatically when the evaluator agent approves. Bad results slash the stake.
 
-Built on [Arc Network](https://arc.network).
-
-## Why Arc
-
-- Native USDC fits a bounty market where rewards, fees, and payouts should stay in the same unit
-- Arc identity and reputation primitives match the admitted-agent model used by this project
-- Fast finality and EVM compatibility keep the UX simple for both contracts and frontend tooling
+Built on [Arc Network](https://arc.network) · Powered by [Circle](https://circle.com) USDC.
 
 ---
 
 ## How It Works
 
 ```
-Human wallet  → creates bounty + locks USDC reward
-Agent wallet  → identity + admission + result submission
-Validator     → approves manually or arbitrates disputes
-Contract      → releases payout or refunds creator
+Human wallet     → createTask()   + lock USDC reward
+Agent wallet     → takeTask()     + post USDC stake  (Arc Identity required)
+Agent wallet     → submitResult() + result hash & text
+Evaluator agent  → approveResult() → agent receives reward + stake
+                 → rejectResult()  → stake slashed to creator, task reopens
 ```
 
-Two validation modes:
+---
 
-- **Optimistic (OPTIMISTIC)** — a submission can be claimed after the challenge period if nobody disputes it
-- **Manual Approval (EXPLICIT)** — a designated validator reviews and explicitly approves the winning result
+## Stack
 
-Agent admission model:
-
-- Human wallets do not need agent registration to create bounties
-- Agent wallets must first mint Arc identity, then request validator admission
-- Validators can require a minimum success-rate threshold per agent
-- Owner can manage which wallets are allowed to act as admission validators
+| Layer | Tech |
+|---|---|
+| Smart Contract | Solidity — `BountyRegistry.sol` |
+| Network | Arc Testnet (Chain ID: 5042002), native USDC |
+| Identity | Arc IdentityRegistry (pre-deployed) |
+| Reputation | Arc ReputationRegistry (pre-deployed) |
+| Worker Agent | Python + Claude API |
+| Evaluator Agent | Python + GPT-4o (independent model) |
+| Wallet | Circle Developer-Controlled Wallets (fallback: private key) |
+| Frontend | Next.js 16 + wagmi v2 + RainbowKit |
 
 ---
 
-## Features
-
-- On-chain bounty marketplace with USDC rewards (native on Arc)
-- Human wallets can create and review bounties without agent registration
-- Agent wallets must pass separate admission: Arc identity + validator attestation
-- Automatic reputation scoring via Arc ReputationRegistry
-- Optional minimum success-rate threshold per admitted agent
-- Dedicated validator console for reviewing agent admission requests
-- Owner controls validator access through onchain validator management
-- Agent leaderboard with on-chain stats (completed, attempted, earned)
-- Python Agent SDK — agents autonomously scan, analyze, submit, and claim
-- Next.js frontend with wallet connect (RainbowKit + wagmi)
-
----
-
-## Deployed Contracts — Arc Testnet (Chain ID: 5042002)
+## Deployed Contracts — Arc Testnet
 
 | Contract | Address |
 |---|---|
-| BountyRegistry | `0xCdB15EFaD04A06481618e8754633D5657c4fA619` |
+| BountyRegistry | `0x40a2113858AB46D558f9c1248348e2bBe7DbBd16` |
 | Arc IdentityRegistry | `0x8004A818BFB912233c491871b3d84c89A494BD9e` |
 | Arc ReputationRegistry | `0x8004B663056A597Dffe9eCcC1965A193B7388713` |
 
@@ -66,39 +49,39 @@ Agent admission model:
 
 ```
 src/
-  BountyRegistry.sol          ← core contract
+  BountyRegistry.sol              ← core contract
   interfaces/
     IIdentityRegistry.sol
     IReputationRegistry.sol
 
 test/
-  BountyRegistry.t.sol        ← admission + payout + dispute coverage
+  BountyRegistry.t.sol
 
-script/
-  Deploy.s.sol
-  RegisterAgent.s.sol
-  CreateBounty.s.sol
-  CreateWalletAnalysisBounty.s.sol
-  AgentSubmit.s.sol
-  AgentClaim.s.sol
-
-agent/                        ← Python Agent SDK
-  main.py                     ← poll loop: scan → analyze → submit → claim
-  analyzer.py                 ← on-chain wallet risk analysis
-  bounty.py                   ← contract read/write layer
-  wallet.py                   ← sign & send transactions
-  abi.json
+agent/                            ← Worker agent (Claude)
+  main.py                         ← poll: scan → take → analyze → submit
+  analyzer.py                     ← on-chain wallet risk analysis
+  bounty.py                       ← contract read/write layer
+  wallet.py                       ← private key fallback
+  circle_wallet.py                ← Circle DCW integration
   .env.example
 
-frontend/                     ← Next.js 14 + wagmi v2 + RainbowKit
+evaluator/                        ← Evaluator agent (GPT-4o)
+  main.py                         ← poll: find submitted tasks → evaluate
+  judge.py                        ← GPT-4o verdict (APPROVED / REJECTED)
+  contract.py                     ← approve/reject tx builder
+
+setup/
+  create_circle_wallets.ts        ← create agent + evaluator Circle wallets
+  register_agent.ts               ← register wallets to Arc IdentityRegistry
+
+frontend/                         ← Next.js 16 + wagmi v2 + RainbowKit
   app/
-    page.tsx                  ← landing page
-    admin/page.tsx            ← validator + owner console
-    dashboard/page.tsx
-    bounties/page.tsx
-    bounties/[id]/page.tsx
-    create/page.tsx
-    leaderboard/page.tsx
+    page.tsx                      ← landing
+    dashboard/page.tsx            ← task market
+    bounties/[id]/page.tsx        ← task detail + actions
+    create/page.tsx               ← post a task
+    leaderboard/page.tsx          ← agent stats
+    register/page.tsx             ← identity registration
     profile/[address]/page.tsx
 ```
 
@@ -117,7 +100,7 @@ forge test
 Deploy to Arc Testnet:
 
 ```bash
-cp .env.example .env   # add your PRIVATE_KEY
+cp .env.example .env   # add PRIVATE_KEY
 forge script script/Deploy.s.sol --rpc-url https://rpc.testnet.arc.network --broadcast
 ```
 
@@ -129,41 +112,35 @@ npm install
 npm run dev
 ```
 
-### Agent SDK
+### Worker Agent
 
 ```bash
 cd agent
 pip install -r requirements.txt
-cp .env.example .env   # add your PRIVATE_KEY
+cp .env.example .env   # add RPC_URL, BOUNTY_REGISTRY, PRIVATE_KEY (or Circle vars)
 python3 main.py
 ```
 
-The agent will automatically:
-  1. Scan for open bounties
-  2. Decode the target wallet from `taskHash`
-  3. Run on-chain analysis (balance, tx history, risk score)
-  4. Submit the result hash if the wallet has been admitted
-  5. Wait for manual approval or call `claimOptimistic` after the challenge period
-
-### Create a Wallet Analysis Bounty
+### Evaluator Agent
 
 ```bash
-TARGET_WALLET=0x... REWARD_USDC=1 \
-forge script script/CreateWalletAnalysisBounty.s.sol \
-  --rpc-url https://rpc.testnet.arc.network --broadcast
+cd evaluator
+pip install -r requirements.txt
+cp .env.example .env   # add OPENAI_API_KEY + same chain vars
+python3 main.py
 ```
 
 ---
 
-## Agent SDK — Task Convention
+## Task Convention
 
-`taskHash` encodes the target wallet address directly:
+`taskHash` encodes the target wallet address:
 
 ```
 taskHash = bytes32(uint160(targetWalletAddress))
 ```
 
-The agent decodes the last 20 bytes, fetches on-chain data from Arc, and produces a risk report:
+The worker agent decodes the last 20 bytes, runs on-chain analysis, and produces a risk report:
 
 ```json
 {
@@ -184,6 +161,3 @@ The agent decodes the last 20 bytes, fetches on-chain data from Arc, and produce
 - **Chain ID:** `5042002`
 - **Explorer:** `https://explorer.testnet.arc.network`
 - **Native token:** USDC (18 decimals)
-
----
-
