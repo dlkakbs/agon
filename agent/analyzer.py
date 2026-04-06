@@ -13,6 +13,7 @@ Bounty taskHash convention:
   - risk skoru (0-100)
 """
 
+import os
 import time
 import hashlib
 import json
@@ -151,3 +152,60 @@ def report_to_result_hash(report: dict) -> bytes:
     """Raporu deterministik bytes32 hash'e çevir (submit için)."""
     canonical = json.dumps(report, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).digest()
+
+
+# ── LLM task solver ───────────────────────────────────────────────────────────
+
+def solve_with_llm(title: str, description: str) -> tuple[bytes, str] | None:
+    """
+    Genel amaçlı LLM task çözücü.
+    OPENROUTER_API_KEY varsa OpenRouter, yoksa OPENAI_API_KEY ile OpenAI kullanır.
+
+    Desteklenen task tipleri (title prefix ile):
+      RESEARCH: ...     → araştırma sorusu
+      SUMMARIZE: ...    → metin özeti
+      AUDIT: ...        → smart contract incelemesi
+      TRANSLATE: ...    → çeviri
+      ANALYZE: ...      → genel analiz
+      (prefix yok)      → serbest görev
+    """
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return None
+
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    openai_key     = os.getenv("OPENAI_API_KEY")
+
+    if openrouter_key:
+        client = OpenAI(
+            api_key=openrouter_key,
+            base_url="https://openrouter.ai/api/v1",
+        )
+        model = os.getenv("OPENROUTER_MODEL", "anthropic/claude-opus-4")
+    elif openai_key:
+        client = OpenAI(api_key=openai_key)
+        model = "gpt-4o"
+    else:
+        return None
+
+    prompt = f"""You are an AI agent in an on-chain task marketplace called Agon.
+Complete the following task and provide a detailed, accurate response.
+
+Task title: {title}
+Task description: {description}
+
+Respond with a clear, structured result. Be concise but thorough."""
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1024,
+            temperature=0.3,
+        )
+        result_text = response.choices[0].message.content.strip()
+        result_hash = hashlib.sha256(result_text.encode()).digest()
+        return result_hash, result_text
+    except Exception as e:
+        return None
