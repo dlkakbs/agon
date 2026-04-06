@@ -1,0 +1,9 @@
+{
+  "name": "agon",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "cd evaluator && node gateway.js",
+    "install": "cd evaluator && npm install"
+  }
+}
