@@ -2,4 +2,4 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "node gateway.js"
+startCommand = "cd evaluator && node gateway.js"
