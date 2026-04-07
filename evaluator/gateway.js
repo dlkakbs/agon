@@ -160,14 +160,11 @@ const app = express();
 app.use(express.json());
 
 // x402 middleware — charges $0.002 USDC per /evaluate request
-app.use(
-  "/evaluate",
-  createGatewayMiddleware({
-    sellerAddress,
-    price: EVALUATION_PRICE,
-    network: "arcTestnet",
-  })
-);
+const gatewayMiddleware = createGatewayMiddleware({
+  sellerAddress,
+  networks: "arcTestnet",
+});
+app.use("/evaluate", gatewayMiddleware.require(EVALUATION_PRICE));
 
 app.post("/evaluate", async (req, res) => {
   const { taskId, title, description, resultText } = req.body;
